@@ -77,8 +77,8 @@ static const struct behavior_driver_api kh_toggle_driver_api = {
 
 #define DT_DRV_COMPAT zmk_key_history_toggle
 #define KH_TOGGLE_INST(n) \
-    DEVICE_DT_INST_DEFINE(n, NULL, NULL, NULL, NULL, \
-        APPLICATION, CONFIG_KERNEL_INIT_PRIORITY_DEFAULT, \
+    BEHAVIOR_DT_INST_DEFINE(n, NULL, NULL, NULL, NULL, \
+        POST_KERNEL, CONFIG_ZMK_BEHAVIOR_INIT_PRIORITY, \
         &kh_toggle_driver_api);
 DT_INST_FOREACH_STATUS_OKAY(KH_TOGGLE_INST)
 #undef DT_DRV_COMPAT
@@ -112,9 +112,9 @@ static const struct behavior_driver_api kh_scroll_driver_api = {
     static const struct kh_scroll_cfg kh_scroll_cfg_##n = {    \
         .direction = DT_INST_PROP(n, direction),                \
     };                                                           \
-    DEVICE_DT_INST_DEFINE(n, NULL, NULL, NULL,                  \
+    BEHAVIOR_DT_INST_DEFINE(n, NULL, NULL, NULL,                \
         &kh_scroll_cfg_##n,                                     \
-        APPLICATION, CONFIG_KERNEL_INIT_PRIORITY_DEFAULT,       \
+        POST_KERNEL, CONFIG_ZMK_BEHAVIOR_INIT_PRIORITY,         \
         &kh_scroll_driver_api);
 DT_INST_FOREACH_STATUS_OKAY(KH_SCROLL_INST)
 #undef DT_DRV_COMPAT
