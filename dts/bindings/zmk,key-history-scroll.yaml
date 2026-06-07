@@ -1,0 +1,12 @@
+description: Key history scroll behavior
+
+compatible: "zmk,key-history-scroll"
+
+include:
+  - name: zero_param.yaml
+
+properties:
+  direction:
+    type: int
+    required: true
+    description: "0 = scroll up toward older entries, 1 = scroll down toward newer entries"

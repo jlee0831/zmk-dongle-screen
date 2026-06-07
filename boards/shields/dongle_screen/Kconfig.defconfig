@@ -216,4 +216,21 @@ config DONGLE_SCREEN_SYSTEM_ICON
     help
         The icon to display when the 'LGUI'/'RGUI' is pressed. Can be used to better match the Mod Widget to the underlying system.
         (0: macOS, 1: Linux, 2: Windows)
+
+config DONGLE_SCREEN_KEY_HISTORY
+    bool "Key history display overlay"
+    default n
+    help
+      Adds a scrollable key history full-screen overlay toggled by a ZMK behavior.
+
+if DONGLE_SCREEN_KEY_HISTORY
+
+config LV_FONT_MONTSERRAT_12
+    default y
+
+config LV_FONT_MONTSERRAT_14
+    default y
+
+endif # DONGLE_SCREEN_KEY_HISTORY
+
 endif

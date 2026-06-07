@@ -1,0 +1,6 @@
+description: Key history toggle behavior
+
+compatible: "zmk,key-history-toggle"
+
+include:
+  - name: zero_param.yaml
