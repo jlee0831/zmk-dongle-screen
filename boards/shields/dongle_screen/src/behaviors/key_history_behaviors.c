@@ -5,6 +5,7 @@
 #include <zmk/display.h>
 #include <zmk/event_manager.h>
 #include <zmk/events/keycode_state_changed.h>
+#include <zmk/hid.h>
 #include <lvgl.h>
 #include "key_history.h"
 
@@ -168,9 +169,13 @@ static int kh_key_nav(const zmk_event_t *eh) {
 
     if (!kh_is_active()) return ZMK_EV_EVENT_BUBBLE;
 
-    /* Process navigation on key press; swallow all other keys */
+    /* Process navigation on key press; swallow all other keys.
+     * HID's listener runs before ours (link order) and already wrote this
+     * keycode into the USB report buffer.  Call zmk_hid_keyboard_release()
+     * to pull it back out before the USB endpoint task transmits the report. */
     if (ev->state) {
-        /* LCTRL=bit0, RCTRL=bit4 in HID modifier byte */
+        zmk_hid_keyboard_release(kc);
+
         bool ctrl = (s_active_mods & 0x11) != 0;
 
         if      (kc == 0x52 || kc == 0x0E || (kc == 0x13 && ctrl))
@@ -179,7 +184,7 @@ static int kh_key_nav(const zmk_event_t *eh) {
             k_work_submit_to_queue(zmk_display_work_q(), &scroll_down_work);
         else if (kc == 0x29)
             k_work_submit_to_queue(zmk_display_work_q(), &toggle_work);
-        /* all other keys: fall through and get swallowed */
+        /* all other keys: release called above, nothing else to do */
     }
 
     s_consumed_kc   = kc;
