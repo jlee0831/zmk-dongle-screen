@@ -5,6 +5,7 @@
 #include <zmk/display.h>
 #include <zmk/event_manager.h>
 #include <zmk/events/keycode_state_changed.h>
+#include <zmk/hid.h>
 #include <lvgl.h>
 #include "key_history.h"
 
@@ -121,51 +122,63 @@ static const struct behavior_driver_api kh_scroll_driver_api = {
 DT_INST_FOREACH_STATUS_OKAY(KH_SCROLL_INST)
 #undef DT_DRV_COMPAT
 
-/* ── Keycode interceptor: up/down/esc control history ───── */
-
-/* HID usage page 0x07 (keyboard), usage IDs for the three keys */
-#define KH_HID_PAGE  0x07
-#define KH_HID_UP    0x52
-#define KH_HID_DOWN  0x51
-#define KH_HID_ESC   0x29
+/* ── Keycode interceptor ─────────────────────────────────── */
 
 /*
- * Track which keycode we consumed on press so we also eat its release
- * event even if kh_is_active() has changed by then (e.g. ESC closes
- * the overlay between press and release).
+ * While the history overlay is open, consume ALL non-modifier keypresses
+ * so nothing leaks to the host.  Modifier keycodes (0xE0–0xE7) are let
+ * through so that mod-morph behaviors (e.g. ctrl+P → UP arrow) continue
+ * to work on the keyboard side.
+ *
+ * Navigation keycodes also trigger scroll / close actions:
+ *   UP  (0x52), k (0x0E)           → scroll up
+ *   DOWN(0x51), j (0x0D)           → scroll down
+ *   ctrl+p (0x13 + ctrl modifier)  → scroll up   (emacs; also handled by
+ *   ctrl+n (0x11 + ctrl modifier)  → scroll down   mod-morph → UP/DOWN)
+ *   ESC (0x29)                     → close overlay
+ *
+ * Track the last consumed keycode so its release is also eaten even after
+ * the overlay has closed (e.g. ESC press closes → release still consumed).
  */
-static uint32_t s_consumed_kc = 0;
+static uint32_t s_consumed_kc   = 0;
+static uint16_t s_consumed_page = 0;
 
 static int kh_key_nav(const zmk_event_t *eh) {
     const struct zmk_keycode_state_changed *ev = as_zmk_keycode_state_changed(eh);
-    if (!ev || ev->usage_page != KH_HID_PAGE) return ZMK_EV_EVENT_BUBBLE;
+    if (!ev) return ZMK_EV_EVENT_BUBBLE;
 
-    uint32_t kc = ev->keycode;
+    uint32_t kc   = ev->keycode;
+    uint16_t page = ev->usage_page;
 
-    /* Eat the release for any key we already consumed on press */
-    if (!ev->state && kc == s_consumed_kc) {
-        s_consumed_kc = 0;
+    /* Eat the release of any key we consumed on press */
+    if (!ev->state && kc == s_consumed_kc && page == s_consumed_page) {
+        s_consumed_kc   = 0;
+        s_consumed_page = 0;
         return ZMK_EV_EVENT_HANDLED;
     }
 
     if (!kh_is_active()) return ZMK_EV_EVENT_BUBBLE;
 
-    switch (kc) {
-    case KH_HID_UP:
-        if (ev->state) k_work_submit_to_queue(zmk_display_work_q(), &scroll_up_work);
-        s_consumed_kc = kc;
-        return ZMK_EV_EVENT_HANDLED;
-    case KH_HID_DOWN:
-        if (ev->state) k_work_submit_to_queue(zmk_display_work_q(), &scroll_down_work);
-        s_consumed_kc = kc;
-        return ZMK_EV_EVENT_HANDLED;
-    case KH_HID_ESC:
-        if (ev->state) k_work_submit_to_queue(zmk_display_work_q(), &toggle_work);
-        s_consumed_kc = kc;
-        return ZMK_EV_EVENT_HANDLED;
-    default:
-        return ZMK_EV_EVENT_BUBBLE;
+    /* Let modifier keycodes through so mod-morph keeps working */
+    if (kc >= 0xE0 && kc <= 0xE7) return ZMK_EV_EVENT_BUBBLE;
+
+    /* Process navigation on key press; swallow all other keys */
+    if (ev->state) {
+        /* ctrl bit in HID modifier byte: LCTRL=bit0, RCTRL=bit4 */
+        bool ctrl = (zmk_hid_get_mods() & 0x11) != 0;
+
+        if      (kc == 0x52 || kc == 0x0E || (kc == 0x13 && ctrl))
+            k_work_submit_to_queue(zmk_display_work_q(), &scroll_up_work);
+        else if (kc == 0x51 || kc == 0x0D || (kc == 0x11 && ctrl))
+            k_work_submit_to_queue(zmk_display_work_q(), &scroll_down_work);
+        else if (kc == 0x29)
+            k_work_submit_to_queue(zmk_display_work_q(), &toggle_work);
+        /* all other keys: fall through and get swallowed */
     }
+
+    s_consumed_kc   = kc;
+    s_consumed_page = page;
+    return ZMK_EV_EVENT_HANDLED;
 }
 
 ZMK_LISTENER(kh_key_nav, kh_key_nav);
