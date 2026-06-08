@@ -5,7 +5,6 @@
 #include <zmk/display.h>
 #include <zmk/event_manager.h>
 #include <zmk/events/keycode_state_changed.h>
-#include <zmk/hid.h>
 #include <lvgl.h>
 #include "key_history.h"
 
@@ -142,6 +141,8 @@ DT_INST_FOREACH_STATUS_OKAY(KH_SCROLL_INST)
  */
 static uint32_t s_consumed_kc   = 0;
 static uint16_t s_consumed_page = 0;
+/* HID modifier byte tracking (LCTRL=bit0, LSHIFT=bit1, ..., RCTRL=bit4, ...) */
+static uint8_t  s_active_mods   = 0;
 
 static int kh_key_nav(const zmk_event_t *eh) {
     const struct zmk_keycode_state_changed *ev = as_zmk_keycode_state_changed(eh);
@@ -157,15 +158,20 @@ static int kh_key_nav(const zmk_event_t *eh) {
         return ZMK_EV_EVENT_HANDLED;
     }
 
-    if (!kh_is_active()) return ZMK_EV_EVENT_BUBBLE;
+    /* Track modifier state ourselves; pass modifiers through so mod-morph works */
+    if (kc >= 0xE0 && kc <= 0xE7) {
+        uint8_t bit = (uint8_t)(1u << (kc - 0xE0));
+        if (ev->state) s_active_mods |=  bit;
+        else           s_active_mods &= ~bit;
+        return ZMK_EV_EVENT_BUBBLE;
+    }
 
-    /* Let modifier keycodes through so mod-morph keeps working */
-    if (kc >= 0xE0 && kc <= 0xE7) return ZMK_EV_EVENT_BUBBLE;
+    if (!kh_is_active()) return ZMK_EV_EVENT_BUBBLE;
 
     /* Process navigation on key press; swallow all other keys */
     if (ev->state) {
-        /* ctrl bit in HID modifier byte: LCTRL=bit0, RCTRL=bit4 */
-        bool ctrl = (zmk_hid_get_mods() & 0x11) != 0;
+        /* LCTRL=bit0, RCTRL=bit4 in HID modifier byte */
+        bool ctrl = (s_active_mods & 0x11) != 0;
 
         if      (kc == 0x52 || kc == 0x0E || (kc == 0x13 && ctrl))
             k_work_submit_to_queue(zmk_display_work_q(), &scroll_up_work);
