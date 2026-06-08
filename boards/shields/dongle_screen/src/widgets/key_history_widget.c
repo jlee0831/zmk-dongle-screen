@@ -137,104 +137,53 @@ static lv_opa_t kh_age_opacity(uint32_t age_ms) {
 #define KH_SCREEN_W  280
 #define KH_HEADER_H   32
 #define KH_ROW_H      20
-#define KH_COL_POS_X    8
-#define KH_COL_POS_W   36
-#define KH_COL_ARR_X   46
-#define KH_COL_ARR_W   14
-#define KH_COL_KC_X    62
-#define KH_COL_KC_W    96
-#define KH_COL_BADGE_X 160
-#define KH_COL_BADGE_W  68
-#define KH_COL_TIME_X  230
-#define KH_COL_TIME_W   48
 
+/* One label per row — keeps total LVGL object count within the 10 KB pool */
 static void kh_render_row(lv_obj_t *parent, const kh_entry_t *e,
                            uint8_t row_idx, uint32_t age_ms) {
-    lv_opa_t opa = kh_age_opacity(age_ms);
+    lv_obj_t *lbl = lv_label_create(parent);
+    if (!lbl) return;
 
-    lv_obj_t *row = lv_obj_create(parent);
-    lv_obj_set_size(row, KH_SCREEN_W, KH_ROW_H);
-    lv_obj_set_pos(row, 0, row_idx * KH_ROW_H);
-    lv_obj_set_style_border_width(row, 0, 0);
-    lv_obj_set_style_pad_all(row, 0, 0);
-    lv_obj_set_style_radius(row, 0, 0);
-    lv_obj_clear_flag(row, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_set_style_bg_color(row,
-        e->type == KH_LAYER_CHANGE ? lv_color_hex(0x0d1a0d) : lv_color_black(), 0);
-    lv_obj_set_style_bg_opa(row, LV_OPA_100, 0);
+    lv_obj_set_pos(lbl, 0, row_idx * KH_ROW_H);
+    lv_obj_set_size(lbl, KH_SCREEN_W, KH_ROW_H);
+    lv_label_set_long_mode(lbl, LV_LABEL_LONG_CLIP);
+    lv_obj_set_style_pad_all(lbl, 0, 0);
+    lv_obj_set_style_pad_left(lbl, 4, 0);
+    lv_obj_set_style_pad_top(lbl, 3, 0);
+    lv_obj_set_style_border_width(lbl, 0, 0);
+    lv_obj_set_style_radius(lbl, 0, 0);
+    lv_obj_set_style_bg_opa(lbl, LV_OPA_100, 0);
+    lv_obj_set_style_text_font(lbl, &lv_font_montserrat_12, 0);
+    lv_obj_set_style_text_opa(lbl, kh_age_opacity(age_ms), 0);
 
-#define ROW_LABEL(x, w, color_hex, font_ptr)              \
-    ({                                                     \
-        lv_obj_t *_l = lv_label_create(row);             \
-        lv_obj_set_pos(_l, (x), 3);                      \
-        lv_obj_set_width(_l, (w));                       \
-        lv_label_set_long_mode(_l, LV_LABEL_LONG_CLIP); \
-        lv_obj_set_style_text_color(_l,                  \
-            lv_color_hex(color_hex), 0);                 \
-        lv_obj_set_style_text_opa(_l, opa, 0);          \
-        lv_obj_set_style_text_font(_l, (font_ptr), 0);  \
-        _l;                                              \
-    })
-
+    char buf[64];
     if (e->type == KH_LAYER_CHANGE) {
-        lv_obj_t *sym = ROW_LABEL(KH_COL_POS_X, KH_COL_POS_W, 0x3fb950, &lv_font_montserrat_14);
-        lv_label_set_text(sym, "\xe2\x97\x86");
-
-        char desc[24];
-        snprintf(desc, sizeof(desc), "%s %s",
-                 e->layer_active ? "act" : "deact",
-                 kh_layer_name(e->new_layer));
-        lv_obj_t *ev = ROW_LABEL(KH_COL_KC_X, KH_COL_KC_W + KH_COL_BADGE_W,
-                                  0x3fb950, &lv_font_montserrat_14);
-        lv_label_set_text(ev, desc);
-
-        char ts[10];
-        snprintf(ts, sizeof(ts), "%lus", (unsigned long)(age_ms / 1000));
-        lv_obj_t *t = ROW_LABEL(KH_COL_TIME_X, KH_COL_TIME_W, 0x30363d, &lv_font_montserrat_12);
-        lv_label_set_text(t, ts);
+        lv_obj_set_style_bg_color(lbl, lv_color_hex(0x0d1a0d), 0);
+        lv_obj_set_style_text_color(lbl, lv_color_hex(0x3fb950), 0);
+        snprintf(buf, sizeof(buf), "\xe2\x97\x86 %s %s  %lus",
+                 e->layer_active ? "+" : "-",
+                 kh_layer_name(e->new_layer),
+                 (unsigned long)(age_ms / 1000));
     } else {
-        char pos_str[8];
-        if (e->position == 0xFFFFFFFF) {
-            snprintf(pos_str, sizeof(pos_str), "??");
-        } else {
-            snprintf(pos_str, sizeof(pos_str), "#%lu", (unsigned long)e->position);
-        }
-        lv_obj_t *pos_lbl = ROW_LABEL(KH_COL_POS_X, KH_COL_POS_W, 0x7c6af7, &lv_font_montserrat_14);
-        lv_label_set_text(pos_lbl, pos_str);
-
-        lv_obj_t *arr = ROW_LABEL(KH_COL_ARR_X, KH_COL_ARR_W, 0x30363d, &lv_font_montserrat_14);
-        lv_label_set_text(arr, "\xe2\x86\x92");
+        kh_layer_color_t lc = kh_layer_color(e->layer);
+        lv_obj_set_style_bg_color(lbl, lv_color_black(), 0);
+        lv_obj_set_style_text_color(lbl, lv_color_hex(lc.text), 0);
 
         char kc_buf[16];
         const char *kc_str = (e->keycode == 0)
             ? "..."
             : kh_kc_str(e->keycode, e->mods, kc_buf, sizeof(kc_buf));
-        lv_obj_t *kc_lbl = ROW_LABEL(KH_COL_KC_X, KH_COL_KC_W, 0xe6edf3, &lv_font_montserrat_14);
-        lv_label_set_text(kc_lbl, kc_str);
-
-        kh_layer_color_t lc = kh_layer_color(e->layer);
-        lv_obj_t *badge_bg = lv_obj_create(row);
-        lv_obj_set_pos(badge_bg, KH_COL_BADGE_X, 3);
-        lv_obj_set_size(badge_bg, KH_COL_BADGE_W, KH_ROW_H - 6);
-        lv_obj_set_style_bg_color(badge_bg, lv_color_hex(lc.bg), 0);
-        lv_obj_set_style_bg_opa(badge_bg, opa, 0);
-        lv_obj_set_style_border_width(badge_bg, 0, 0);
-        lv_obj_set_style_radius(badge_bg, 2, 0);
-        lv_obj_set_style_pad_all(badge_bg, 0, 0);
-        lv_obj_clear_flag(badge_bg, LV_OBJ_FLAG_SCROLLABLE);
-        lv_obj_t *badge_lbl = lv_label_create(badge_bg);
-        lv_label_set_text(badge_lbl, kh_layer_name(e->layer));
-        lv_obj_set_style_text_color(badge_lbl, lv_color_hex(lc.text), 0);
-        lv_obj_set_style_text_opa(badge_lbl, opa, 0);
-        lv_obj_set_style_text_font(badge_lbl, &lv_font_montserrat_12, 0);
-        lv_obj_center(badge_lbl);
-
-        char ts[10];
-        snprintf(ts, sizeof(ts), "%lus", (unsigned long)(age_ms / 1000));
-        lv_obj_t *t = ROW_LABEL(KH_COL_TIME_X, KH_COL_TIME_W, 0x30363d, &lv_font_montserrat_12);
-        lv_label_set_text(t, ts);
+        char pos_str[8];
+        if (e->position == 0xFFFFFFFF) {
+            snprintf(pos_str, sizeof(pos_str), "??");
+        } else {
+            snprintf(pos_str, sizeof(pos_str), "%u", (unsigned)e->position);
+        }
+        snprintf(buf, sizeof(buf), "%-3s \xe2\x86\x92 %-7s [%s] %lus",
+                 pos_str, kc_str, kh_layer_name(e->layer),
+                 (unsigned long)(age_ms / 1000));
     }
-#undef ROW_LABEL
+    lv_label_set_text(lbl, buf);
 }
 
 /* ── Screen create / rebuild ─────────────────────────────── */
