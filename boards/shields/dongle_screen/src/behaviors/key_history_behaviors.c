@@ -3,6 +3,8 @@
 #include <drivers/behavior.h>
 #include <zmk/behavior.h>
 #include <zmk/display.h>
+#include <zmk/event_manager.h>
+#include <zmk/events/keycode_state_changed.h>
 #include <lvgl.h>
 #include "key_history.h"
 
@@ -118,3 +120,53 @@ static const struct behavior_driver_api kh_scroll_driver_api = {
         &kh_scroll_driver_api);
 DT_INST_FOREACH_STATUS_OKAY(KH_SCROLL_INST)
 #undef DT_DRV_COMPAT
+
+/* ── Keycode interceptor: up/down/esc control history ───── */
+
+/* HID usage page 0x07 (keyboard), usage IDs for the three keys */
+#define KH_HID_PAGE  0x07
+#define KH_HID_UP    0x52
+#define KH_HID_DOWN  0x51
+#define KH_HID_ESC   0x29
+
+/*
+ * Track which keycode we consumed on press so we also eat its release
+ * event even if kh_is_active() has changed by then (e.g. ESC closes
+ * the overlay between press and release).
+ */
+static uint32_t s_consumed_kc = 0;
+
+static int kh_key_nav(const zmk_event_t *eh) {
+    const struct zmk_keycode_state_changed *ev = as_zmk_keycode_state_changed(eh);
+    if (!ev || ev->usage_page != KH_HID_PAGE) return ZMK_EV_EVENT_BUBBLE;
+
+    uint32_t kc = ev->keycode;
+
+    /* Eat the release for any key we already consumed on press */
+    if (!ev->state && kc == s_consumed_kc) {
+        s_consumed_kc = 0;
+        return ZMK_EV_EVENT_HANDLED;
+    }
+
+    if (!kh_is_active()) return ZMK_EV_EVENT_BUBBLE;
+
+    switch (kc) {
+    case KH_HID_UP:
+        if (ev->state) k_work_submit_to_queue(zmk_display_work_q(), &scroll_up_work);
+        s_consumed_kc = kc;
+        return ZMK_EV_EVENT_HANDLED;
+    case KH_HID_DOWN:
+        if (ev->state) k_work_submit_to_queue(zmk_display_work_q(), &scroll_down_work);
+        s_consumed_kc = kc;
+        return ZMK_EV_EVENT_HANDLED;
+    case KH_HID_ESC:
+        if (ev->state) k_work_submit_to_queue(zmk_display_work_q(), &toggle_work);
+        s_consumed_kc = kc;
+        return ZMK_EV_EVENT_HANDLED;
+    default:
+        return ZMK_EV_EVENT_BUBBLE;
+    }
+}
+
+ZMK_LISTENER(kh_key_nav, kh_key_nav);
+ZMK_SUBSCRIPTION(kh_key_nav, zmk_keycode_state_changed);
