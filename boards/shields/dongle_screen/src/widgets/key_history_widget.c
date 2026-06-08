@@ -80,6 +80,15 @@ static kh_layer_color_t kh_layer_color(uint8_t layer) {
 /* ── Behavior name → short label ─────────────────────────── */
 
 static void kh_bhv_short_name(const char *dev, char *out, size_t len) {
+    /* Transparent/none show as empty so the entry is hidden or shown plain */
+    if (strstr(dev, "transparent") || strstr(dev, "none")) {
+        strncpy(out, "---", len - 1);
+        out[len - 1] = '\0';
+        return;
+    }
+    /* Prepend & to match ZMK keymap syntax; reserve 1 char for NUL */
+    out[0] = '&'; out[1] = '\0';
+    size_t used = 1;
     static const struct { const char *node; const char *label; } map[] = {
         {"key_press",        "kp"},
         {"momentary_layer",  "mo"},
@@ -89,8 +98,6 @@ static void kh_bhv_short_name(const char *dev, char *out, size_t len) {
         {"sticky_layer",     "sl"},
         {"toggle_layer",     "tog"},
         {"to_layer",         "to"},
-        {"transparent",      "---"},
-        {"none",             "---"},
         {"kh_toggle",        "kh"},
         {"key_history",      "kh"},
         {"hold_tap",         "ht"},
@@ -98,13 +105,13 @@ static void kh_bhv_short_name(const char *dev, char *out, size_t len) {
     };
     for (size_t i = 0; i < ARRAY_SIZE(map); i++) {
         if (strstr(dev, map[i].node)) {
-            strncpy(out, map[i].label, len - 1);
+            strncpy(out + used, map[i].label, len - used - 1);
             out[len - 1] = '\0';
             return;
         }
     }
-    /* Unknown: truncate the node name */
-    strncpy(out, dev, len - 1);
+    /* Unknown behavior: use the DT node name directly */
+    strncpy(out + used, dev, len - used - 1);
     out[len - 1] = '\0';
 }
 
@@ -207,10 +214,9 @@ static void kh_render_row(lv_obj_t *parent, const kh_entry_t *e,
     if (e->type == KH_LAYER_CHANGE) {
         lv_obj_set_style_bg_color(lbl, lv_color_hex(0x0d1a0d), 0);
         lv_obj_set_style_text_color(lbl, lv_color_hex(0x3fb950), 0);
-        snprintf(buf, sizeof(buf), "[%s%s]  %lus",
+        snprintf(buf, sizeof(buf), "[%s%s]",
                  e->layer_active ? "+" : "-",
-                 kh_layer_name(e->new_layer),
-                 (unsigned long)(age_ms / 1000));
+                 kh_layer_name(e->new_layer));
     } else {
         kh_layer_color_t lc = kh_layer_color(e->layer);
         lv_obj_set_style_bg_color(lbl, lv_color_black(), 0);
@@ -226,9 +232,8 @@ static void kh_render_row(lv_obj_t *parent, const kh_entry_t *e,
         } else {
             snprintf(pos_str, sizeof(pos_str), "%u", (unsigned)e->position);
         }
-        snprintf(buf, sizeof(buf), "%-8s [%s] #%s  %lus",
-                 kc_str, kh_layer_name(e->layer), pos_str,
-                 (unsigned long)(age_ms / 1000));
+        snprintf(buf, sizeof(buf), "%-8s [%s] #%s",
+                 kc_str, kh_layer_name(e->layer), pos_str);
     }
     lv_label_set_text(lbl, buf);
 }
@@ -260,7 +265,7 @@ lv_obj_t *kh_screen_create(void) {
     lv_obj_set_pos(title, 8, 8);
 
     lv_obj_t *hint = lv_label_create(header);
-    lv_label_set_text(hint, "j/k=scroll  ESC=close");
+    lv_label_set_text(hint, "newest top  ESC=close");
     lv_obj_set_style_text_color(hint, lv_color_hex(0x484f58), 0);
     lv_obj_set_style_text_font(hint, &lv_font_montserrat_12, 0);
     lv_obj_align(hint, LV_ALIGN_RIGHT_MID, -6, 0);
