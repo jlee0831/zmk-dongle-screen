@@ -95,8 +95,8 @@ static const char *kh_kc_str(uint32_t kc, uint8_t mods, char *buf, size_t len) {
         {0x3A,"F1"},{0x3B,"F2"},{0x3C,"F3"},{0x3D,"F4"},
         {0x3E,"F5"},{0x3F,"F6"},{0x40,"F7"},{0x41,"F8"},
         {0x42,"F9"},{0x43,"F10"},{0x44,"F11"},{0x45,"F12"},
-        {0x4C,"DEL"},{0x4F,"\xe2\x86\x92"},{0x50,"\xe2\x86\x90"},
-        {0x51,"\xe2\x86\x93"},{0x52,"\xe2\x86\x91"},
+        {0x4C,"DEL"},{0x4F,"RT"},{0x50,"LT"},
+        {0x51,"DN"},{0x52,"UP"},
         {0xE0,"LCT"},{0xE1,"LSH"},{0xE2,"LAL"},{0xE3,"LGU"},
         {0xE4,"RCT"},{0xE5,"RSH"},{0xE6,"RAL"},{0xE7,"RGU"},
     };
@@ -160,7 +160,7 @@ static void kh_render_row(lv_obj_t *parent, const kh_entry_t *e,
     if (e->type == KH_LAYER_CHANGE) {
         lv_obj_set_style_bg_color(lbl, lv_color_hex(0x0d1a0d), 0);
         lv_obj_set_style_text_color(lbl, lv_color_hex(0x3fb950), 0);
-        snprintf(buf, sizeof(buf), "\xe2\x97\x86 %s %s  %lus",
+        snprintf(buf, sizeof(buf), "[%s%s]  %lus",
                  e->layer_active ? "+" : "-",
                  kh_layer_name(e->new_layer),
                  (unsigned long)(age_ms / 1000));
@@ -171,7 +171,7 @@ static void kh_render_row(lv_obj_t *parent, const kh_entry_t *e,
 
         char kc_buf[16];
         const char *kc_str = (e->keycode == 0)
-            ? "..."
+            ? "---"
             : kh_kc_str(e->keycode, e->mods, kc_buf, sizeof(kc_buf));
         char pos_str[8];
         if (e->position == 0xFFFFFFFF) {
@@ -179,8 +179,8 @@ static void kh_render_row(lv_obj_t *parent, const kh_entry_t *e,
         } else {
             snprintf(pos_str, sizeof(pos_str), "%u", (unsigned)e->position);
         }
-        snprintf(buf, sizeof(buf), "%-3s \xe2\x86\x92 %-7s [%s] %lus",
-                 pos_str, kc_str, kh_layer_name(e->layer),
+        snprintf(buf, sizeof(buf), "%-8s [%s] #%s  %lus",
+                 kc_str, kh_layer_name(e->layer), pos_str,
                  (unsigned long)(age_ms / 1000));
     }
     lv_label_set_text(lbl, buf);
@@ -213,7 +213,7 @@ lv_obj_t *kh_screen_create(void) {
     lv_obj_set_pos(title, 8, 8);
 
     lv_obj_t *hint = lv_label_create(header);
-    lv_label_set_text(hint, "j/k=scroll  H=close");
+    lv_label_set_text(hint, "j/k=scroll  ESC=close");
     lv_obj_set_style_text_color(hint, lv_color_hex(0x484f58), 0);
     lv_obj_set_style_text_font(hint, &lv_font_montserrat_12, 0);
     lv_obj_align(hint, LV_ALIGN_RIGHT_MID, -6, 0);
