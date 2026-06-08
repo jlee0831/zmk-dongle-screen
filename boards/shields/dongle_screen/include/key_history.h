@@ -22,6 +22,7 @@ typedef struct {
     uint8_t  new_layer;    /* KH_LAYER_CHANGE only */
     bool     layer_active; /* true=activated, false=deactivated (KH_LAYER_CHANGE only) */
     uint32_t timestamp_ms;
+    char     bhv[8];       /* short behavior name for non-keycode entries */
 } kh_entry_t;
 
 /* Ring buffer — display-thread-only, no mutex */

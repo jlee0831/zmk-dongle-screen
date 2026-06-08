@@ -8,6 +8,7 @@
 #include <zmk/events/keycode_state_changed.h>
 #include <zmk/event_manager.h>
 #include <zmk/keymap.h>
+#include <zmk/behavior.h>
 #include "key_history.h"
 
 /* ── Ring buffer — display-thread-only ──────────────────── */
@@ -74,6 +75,52 @@ static const kh_layer_color_t kh_layer_colors[] = {
 static kh_layer_color_t kh_layer_color(uint8_t layer) {
     if (layer < ARRAY_SIZE(kh_layer_colors)) return kh_layer_colors[layer];
     return kh_layer_colors[0];
+}
+
+/* ── Behavior name → short label ─────────────────────────── */
+
+static void kh_bhv_short_name(const char *dev, char *out, size_t len) {
+    static const struct { const char *node; const char *label; } map[] = {
+        {"key_press",        "kp"},
+        {"momentary_layer",  "mo"},
+        {"mod_tap",          "mt"},
+        {"layer_tap",        "lt"},
+        {"sticky_key",       "sk"},
+        {"sticky_layer",     "sl"},
+        {"toggle_layer",     "tog"},
+        {"to_layer",         "to"},
+        {"transparent",      "---"},
+        {"none",             "---"},
+        {"kh_toggle",        "kh"},
+        {"key_history",      "kh"},
+        {"hold_tap",         "ht"},
+        {"mod_morph",        "mm"},
+    };
+    for (size_t i = 0; i < ARRAY_SIZE(map); i++) {
+        if (strstr(dev, map[i].node)) {
+            strncpy(out, map[i].label, len - 1);
+            out[len - 1] = '\0';
+            return;
+        }
+    }
+    /* Unknown: truncate the node name */
+    strncpy(out, dev, len - 1);
+    out[len - 1] = '\0';
+}
+
+/* Walk layers from top_layer down to find the first non-transparent binding */
+static void kh_lookup_bhv(uint8_t top_layer, uint32_t position, char *out, size_t len) {
+    for (int8_t l = top_layer; l >= 0; l--) {
+        const struct zmk_behavior_binding *b =
+            zmk_keymap_get_layer_binding_at_idx((zmk_keymap_layer_id_t)l, (uint8_t)position);
+        if (!b || !b->behavior_dev) continue;
+        if (strstr(b->behavior_dev, "transparent") || strstr(b->behavior_dev, "none"))
+            continue;
+        kh_bhv_short_name(b->behavior_dev, out, len);
+        return;
+    }
+    strncpy(out, "---", len - 1);
+    out[len - 1] = '\0';
 }
 
 /* ── Keycode → short string ───────────────────────────────── */
@@ -170,9 +217,9 @@ static void kh_render_row(lv_obj_t *parent, const kh_entry_t *e,
         lv_obj_set_style_text_color(lbl, lv_color_hex(lc.text), 0);
 
         char kc_buf[16];
-        const char *kc_str = (e->keycode == 0)
-            ? "---"
-            : kh_kc_str(e->keycode, e->mods, kc_buf, sizeof(kc_buf));
+        const char *kc_str = (e->keycode != 0)
+            ? kh_kc_str(e->keycode, e->mods, kc_buf, sizeof(kc_buf))
+            : (e->bhv[0] ? e->bhv : "---");
         char pos_str[8];
         if (e->position == 0xFFFFFFFF) {
             snprintf(pos_str, sizeof(pos_str), "??");
@@ -267,16 +314,19 @@ struct kh_position_state {
     bool     pressed;
     uint8_t  layer;
     uint32_t timestamp_ms;
+    char     bhv[8];
 };
 
 static struct kh_position_state kh_position_get_state(const zmk_event_t *eh) {
     const struct zmk_position_state_changed *ev = as_zmk_position_state_changed(eh);
-    return (struct kh_position_state){
+    struct kh_position_state s = {
         .position     = ev->position,
         .pressed      = ev->state,
         .layer        = zmk_keymap_highest_layer_active(),
         .timestamp_ms = (uint32_t)k_uptime_get(),
     };
+    kh_lookup_bhv(s.layer, s.position, s.bhv, sizeof(s.bhv));
+    return s;
 }
 
 static void kh_position_update_cb(struct kh_position_state state) {
@@ -288,6 +338,7 @@ static void kh_position_update_cb(struct kh_position_state state) {
         .keycode      = 0,
         .timestamp_ms = state.timestamp_ms,
     };
+    strncpy(e.bhv, state.bhv, sizeof(e.bhv) - 1);
     kh_push(&e);
     if (kh_is_active()) kh_screen_rebuild();
 }
